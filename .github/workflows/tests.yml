@@ -1,0 +1,109 @@
+# 跑测试。没有 lint、没有构建产物上传——这个项目的测试就是它唯一的质量闸门。
+#
+# 为什么 push 和 PR 都跑：单人仓库大部分提交直接进 main，只在 PR 上跑等于不跑。
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # 手动触发。改完 CI 本身时不用先造一个假提交
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 测试只用 assert / fs / path / vm，没有第三方依赖，
+          # 所以不需要 npm ci，也没有 lock 文件要缓存。
+          node-version: '20'
+
+      - name: 算法单测
+        run: node test/period.test.js
+
+      - name: 界面运行时
+        run: node test/ui.test.js
+
+      - name: 重新打包单文件
+        # 先 build 再测 dist：仓库里那份 dist 可能落后于源文件，
+        # 直接测它会把「忘了重新打包」这个真问题掩盖掉。
+        run: node build/build.js
+
+      - name: 单文件产物自洽性
+        run: node test/dist.test.js
+
+      - name: 确认 dist 已提交且与源文件一致
+        # build 之后 dist 有 diff，说明提交时忘了重新打包。
+        # 这个产物是给用户双击用的，落后一个版本就是发错东西。
+        run: |
+          if ! git diff --quiet -- dist/; then
+            echo "::error::dist/ 与源文件不一致，请在本地跑 node build/build.js 后重新提交"
+            git diff --stat -- dist/
+            exit 1
+          fi
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 和 Dockerfile 里的基础镜像保持一致
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+
+      - name: 装依赖
+        run: pip install -r server/requirements.txt
+
+      - name: 后端测试
+        working-directory: server
+        # 测试自己会建临时库并在结束时清掉，不需要额外的服务
+        run: python test_main.py
+
+      - name: 多设备同步回归
+        working-directory: server
+        run: python -m unittest test_sync -v
+
+  deploy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: systemd unit 语法
+        # verify 会对 ExecStart 路径报 not executable（CI 上没装 uvicorn），
+        # 那是预期的；这里只关心有没有未知键名——
+        # systemd 对拼错的键是静默忽略，不检查的话配置会默默失效。
+        run: |
+          out=$(systemd-analyze verify deploy/nebula-rosette.service 2>&1 || true)
+          echo "$out"
+          if echo "$out" | grep -q 'Unknown key name'; then
+            echo "::error::unit 里有未知键名，systemd 会静默忽略它"
+            exit 1
+          fi
+
+      - name: 备份脚本语法
+        run: sh -n deploy/backup.sh
+
+      - name: compose 文件可解析
+        run: |
+          cp server/.env.example .env
+          docker compose -f docker-compose.yml config --quiet
+
+      - name: 确认敏感文件被 gitignore 覆盖
+        # 这几个文件一旦进了 git 历史就删不干净了
+        run: |
+          fail=0
+          for f in .env server/.env server/.enc_key server/nebula.db; do
+            if ! git check-ignore -q "$f"; then
+              echo "::error::$f 未被 .gitignore 覆盖"
+              fail=1
+            fi
+          done
+          exit $fail

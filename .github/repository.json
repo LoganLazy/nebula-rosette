@@ -1,0 +1,18 @@
+{
+  "owner": "LoganLazy",
+  "name": "nebula-rosette",
+  "description": "本地优先的生理期月历：离线记录、周期洞察、PWA、自托管账号同步与可选 AI 助手。",
+  "homepage": "",
+  "private": false,
+  "has_issues": true,
+  "has_wiki": false,
+  "topics": [
+    "period-tracker",
+    "menstrual-cycle",
+    "local-first",
+    "pwa",
+    "self-hosted",
+    "fastapi",
+    "javascript"
+  ]
+}

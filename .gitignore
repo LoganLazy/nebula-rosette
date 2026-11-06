@@ -1,0 +1,46 @@
+# 依赖与构建产物
+node_modules/
+.local-run/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 环境变量（含 API Key，绝不提交）
+.env
+.env.local
+server/.env
+
+# 加密密钥（丢了就解不开库里存的 API Key，绝不提交）
+.enc_key
+server/.enc_key
+
+# SQLite 数据库（含用户数据，绝不提交）
+*.db
+*.db-wal
+*.db-shm
+server/nebula.db*
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# 本地数据导出
+nebula-rosette-*.json
+
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.log
+*.zip
+*.tar.gz
+backups/
+*.db*
+core.*

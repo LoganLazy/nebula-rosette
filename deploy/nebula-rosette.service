@@ -1,0 +1,105 @@
+# Nebula Rosette —— systemd 服务单元（裸机部署，不需要 Docker）
+#
+# 安装：
+#   sudo cp deploy/nebula-rosette.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nebula-rosette
+#
+# 查看：
+#   systemctl status nebula-rosette
+#   journalctl -u nebula-rosette -f          # 实时日志
+#
+# 改完代码后重启：
+#   sudo systemctl restart nebula-rosette
+#
+# 安装前必须改的三处：User/Group、WorkingDirectory、以及下面 Environment
+# 里的 ALLOWED_ORIGINS。其余保持默认即可。
+
+[Unit]
+Description=Nebula Rosette — 月历后端
+# 换成你自己的仓库地址（deploy/PUBLISH_CHECKLIST.md 里也提到了这一处）
+Documentation=https://github.com/LoganLazy/nebula-rosette
+# 网络就绪后再起。用 network-online 而不是 network：后者只表示网络栈
+# 加载完，绑 0.0.0.0 之外的具体地址时可能还没就绪。
+After=network-online.target
+Wants=network-online.target
+
+# 崩溃重启的频率上限。这两项必须放在 [Unit] 里——写进 [Service]
+# systemd 会当成未知键静默忽略，于是配置写错时会无限快速重试刷满日志。
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+
+# 不要用 root。这个服务会接网络请求，跑成 root 意味着一个漏洞就是整台机器。
+# 建一个专用账号：
+#   sudo useradd --system --home /srv/nebula-rosette --shell /usr/sbin/nologin rosette
+#   sudo chown -R rosette:rosette /srv/nebula-rosette
+User=rosette
+Group=rosette
+
+# 改成你实际的仓库路径。必须是 server/ 目录——main.py 用
+# `import auth` 这样的同级导入，从上层目录启动会 ModuleNotFoundError。
+WorkingDirectory=/srv/nebula-rosette/server
+
+# 配置从 .env 读。EnvironmentFile 允许缺失（前面的 -），
+# 因为所有配置项都有可用的默认值，缺了也能跑起来。
+EnvironmentFile=-/srv/nebula-rosette/.env
+
+# 直连时必须是 0。这里显式写出来而不是靠默认值：
+# 挂反代后忘了改成 1 只是限流失效，而暴露在公网却设成 1
+# 等于让任何人伪造 X-Forwarded-For 绕过登录限流。
+Environment=TRUST_PROXY=0
+# 部署时改成你的真实域名，否则浏览器会拦跨域请求
+Environment=ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+
+# 只监听回环地址。公网访问一律经过带 TLS 的反代
+# （见 deploy/nginx.conf.example）——直接绑 0.0.0.0 的话
+# 密码和会话 token 就是明文在网上传。
+# 用绝对路径：systemd 不走 shell，PATH 里的 uvicorn 找不到。
+# 先 `which uvicorn` 确认路径再填——系统装通常是 /usr/local/bin/uvicorn
+# 或 /usr/bin/uvicorn，装在 venv 里则是 <仓库>/.venv/bin/uvicorn。
+# 路径写错时 systemd 的报错是 "is not executable"，不是找不到命令。
+ExecStart=/usr/local/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+
+# 崩了就重启，但不要无限快速重试。频率上限在 [Unit] 段里
+# （StartLimitIntervalSec / StartLimitBurst）——5 分钟内超过 5 次就停下，
+# 避免配置写错时无声地刷满日志。停下来更容易被发现。
+Restart=on-failure
+RestartSec=5
+
+# 优雅停机：先 SIGINT（uvicorn 据此把在处理的请求收尾），20 秒还不退再 SIGKILL
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+# ---- 沙箱加固。都是零成本的，出问题概率远低于收益 ----
+# 整个文件系统只读，只有下面 ReadWritePaths 列出的能写
+ProtectSystem=strict
+ProtectHome=true
+# 数据库、WAL 文件和 .enc_key 都写在 server/ 下。
+# 若用 DB_PATH 指到了别处，这里要一并加上那个目录。
+ReadWritePaths=/srv/nebula-rosette/server
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# 只允许 IP 协议族。这个服务只需要 TCP 出入（调 LLM 上游）和回环
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# 库里存着健康数据，不需要给它 CAP_* 里的任何一项
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# 日志走 journald，用 journalctl -u nebula-rosette 看
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nebula-rosette
+
+[Install]
+WantedBy=multi-user.target

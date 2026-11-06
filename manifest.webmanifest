@@ -1,0 +1,34 @@
+{
+  "name": "月历 · Nebula Rosette",
+  "short_name": "月历",
+  "description": "安静记录经期，预测下次到来。数据存在你自己的设备和服务器上。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffafc",
+  "theme_color": "#fff5f9",
+  "categories": ["health", "lifestyle"],
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

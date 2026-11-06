@@ -1,0 +1,35 @@
+# Nebula Rosette —— 单服务编排。
+#
+# 刻意只有一个服务：反代（nginx/Caddy）留给宿主机或你已有的那一层，
+# 见 deploy/nginx.conf.example。把 TLS 塞进这个 compose 会逼你在这里
+# 管证书续期，而绝大多数人的服务器上已经有一个在跑了。
+
+services:
+  app:
+    build: .
+    image: nebula-rosette:latest
+    container_name: nebula-rosette
+    restart: unless-stopped
+
+    # 只监听回环地址。写成 "8000:8000" 会绕过宿主机防火墙直接暴露到公网
+    # （Docker 自己改 iptables），那样密码就是明文在网上传。
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      # 容器前面必然有一层反代，所以要读 X-Forwarded-For 才能拿到真实 IP。
+      # 不开的话所有请求看起来都来自同一个 IP，登录限流会把正常用户一起锁死。
+      TRUST_PROXY: "1"
+      DB_PATH: /data/nebula.db
+      ENC_KEY_FILE: /data/.enc_key
+
+    volumes:
+      # 数据库 + 加密密钥。这两个必须一起持久化：
+      # 只留 .db 的话，库里存的 AI API Key 全部解不开。
+      - nebula-data:/data
+
+volumes:
+  nebula-data:

@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#fff5f9" id="meta-theme-color">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="月历">
+<title>Nebula Rosette · 月历</title>
+<script src="assets/tailwind.js"></script>
+<script>
+// 颜色全部走 CSS 变量，这样深色模式只需换一组变量，
+// 不用给一百多个 class 逐个加 dark: 变体。
+// 变量存 RGB 通道数字，配合 <alpha-value> 才能让 text-nebula-700/70 这类透明度修饰继续生效。
+function rgbVar(name) { return 'rgb(var(--c-' + name + ') / <alpha-value>)'; }
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        rosette: {
+          50: rgbVar('rosette-50'), 100: rgbVar('rosette-100'), 200: rgbVar('rosette-200'),
+          300: rgbVar('rosette-300'), 400: rgbVar('rosette-400'), 500: rgbVar('rosette-500'),
+          600: rgbVar('rosette-600'), 700: rgbVar('rosette-700')
+        },
+        petal: {
+          100: rgbVar('petal-100'), 200: rgbVar('petal-200'),
+          300: rgbVar('petal-300'), 400: rgbVar('petal-400')
+        },
+        nebula: {
+          900: rgbVar('nebula-900'), 800: rgbVar('nebula-800'),
+          700: rgbVar('nebula-700'), 600: rgbVar('nebula-600')
+        },
+        surface: rgbVar('surface')
+      },
+      boxShadow: {
+        card: '0 1px 2px rgba(37,29,51,.04), 0 8px 24px -12px rgba(228,29,107,.18)',
+        lift: '0 2px 6px rgba(37,29,51,.06), 0 16px 40px -16px rgba(228,29,107,.28)',
+        glow: '0 6px 20px -6px rgba(244,63,134,.55)'
+      }
+    }
+  }
+}
+</script>
+<style>
+  /* ---------- 浅色（默认） ---------- */
+  :root {
+    --c-rosette-50: 255 241 246;  --c-rosette-100: 255 228 238;
+    --c-rosette-200: 254 205 222; --c-rosette-300: 253 164 196;
+    --c-rosette-400: 251 112 164; --c-rosette-500: 244 63 134;
+    --c-rosette-600: 225 29 107;  --c-rosette-700: 190 18 86;
+    --c-petal-100: 245 232 255; --c-petal-200: 233 213 255;
+    --c-petal-300: 216 180 254; --c-petal-400: 192 132 252;
+    --c-nebula-900: 37 29 51; --c-nebula-800: 58 47 77;
+    --c-nebula-700: 84 71 102; --c-nebula-600: 111 99 131;
+    --c-surface: 255 255 255;
+
+    --page-bg: #fffafc;
+    --card-bg: rgba(255,255,255,.82);
+    --header-bg: rgba(255,255,255,.65);
+    --veil: linear-gradient(180deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.8) 100%);
+    --cal-bg-opacity: .34;
+    --glow-1: rgba(253,164,196,.42);
+    --glow-2: rgba(216,180,254,.40);
+    --glow-3: rgba(254,205,222,.34);
+    --seg-from: #fb70a4; --seg-to: #f43f86;
+    --pred-bg: rgba(255,241,246,.9); --pred-line: #fda4c4; --pred-core: #fb70a4;
+    --fertile-bg: rgba(245,232,255,.85); --fertile-fg: #7e22ce;
+    --ring-track: #ffe4ee;
+    --input-bg: #ffffff;
+    --solid-bg: #3a2f4d; --solid-fg: #ffffff;
+    --mask-bg: rgba(37,29,51,.40);
+    --sheet-bg: #ffffff;
+    --toast-bg: rgba(37,29,51,.92); --toast-fg: #ffffff;
+  }
+
+  /* ---------- 深色 ----------
+     不是把浅色反转就完事：粉色在深底上必须降饱和、提亮度，
+     否则纯度高的品红在暗背景上会发光刺眼。文字用带一点紫的暖白，
+     纯白在深底上对比过硬。 */
+  body.dark {
+    --c-rosette-50: 58 36 50;    --c-rosette-100: 74 44 62;
+    --c-rosette-200: 104 58 84;  --c-rosette-300: 196 122 158;
+    --c-rosette-400: 236 138 178; --c-rosette-500: 244 155 191;
+    --c-rosette-600: 250 182 209; --c-rosette-700: 252 205 224;
+    --c-petal-100: 52 40 72; --c-petal-200: 70 54 96;
+    --c-petal-300: 168 140 224; --c-petal-400: 196 168 246;
+    --c-nebula-900: 240 234 246; --c-nebula-800: 226 218 236;
+    --c-nebula-700: 200 190 214; --c-nebula-600: 176 165 192;
+    --c-surface: 30 24 40;
+
+    --page-bg: #14101c;
+    --card-bg: rgba(38,30,50,.78);
+    --header-bg: rgba(26,20,36,.72);
+    --veil: linear-gradient(180deg, rgba(20,16,28,.68) 0%, rgba(20,16,28,.84) 100%);
+    --cal-bg-opacity: .30;
+    --glow-1: rgba(120,50,90,.34);
+    --glow-2: rgba(86,58,140,.32);
+    --glow-3: rgba(96,44,74,.26);
+    --seg-from: #c2568a; --seg-to: #a83a6e;
+    --pred-bg: rgba(74,44,62,.7); --pred-line: #a86a88; --pred-core: #e08ab0;
+    --fertile-bg: rgba(60,46,86,.75); --fertile-fg: #cfb0f5;
+    --ring-track: #3a2b42;
+    --input-bg: #241d31;
+    --solid-bg: #f49bbf; --solid-fg: #2a1626;
+    --mask-bg: rgba(8,5,14,.62);
+    --sheet-bg: #241d31;
+    --toast-bg: rgba(240,234,246,.94); --toast-fg: #1b1526;
+  }
+
+  html, body { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+                 'Microsoft YaHei', sans-serif;
+    background-color: var(--page-bg);
+    background-image:
+      radial-gradient(720px 380px at 8% -6%,  var(--glow-1) 0%, transparent 62%),
+      radial-gradient(620px 340px at 96% -2%, var(--glow-2) 0%, transparent 60%),
+      radial-gradient(520px 420px at 50% 108%, var(--glow-3) 0%, transparent 66%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    transition: background-color .25s ease;
+  }
+  .safe-bottom { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
+  .tabbar { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* ---------- 日历背景图 ----------
+     背景刻意压得很淡：日历首要任务是读日期，背景一旦抢注意力就是负分。
+     图片放在伪元素上而不是容器本身，这样透明度只作用于背景，
+     不会连带把日期数字也变淡。 */
+  .cal-card { position: relative; overflow: hidden; }
+  .cal-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--cal-bg);
+    background-size: cover;
+    background-position: center;
+    opacity: var(--cal-bg-opacity);
+    pointer-events: none;
+  }
+  /* 背景上再压一层纱，保证最淡的文字也够对比度 */
+  .cal-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--veil);
+    pointer-events: none;
+  }
+  .cal-card > * { position: relative; z-index: 1; }
+  body.no-cal-bg .cal-card::before,
+  body.no-cal-bg .cal-card::after { display: none; }
+
+  /* ---------- 日历格子 ---------- */
+  .cell {
+    position: relative;
+    height: 2.85rem;
+    display: grid;
+    place-items: center;
+    font-size: .875rem;
+    font-variant-numeric: tabular-nums;
+    border-radius: .7rem;
+    transition: transform .14s ease, background-color .14s ease;
+  }
+  .cell:active { transform: scale(.93); }
+
+  /* 经期连续段：中间方角，两端圆角，视觉上连成一条缎带 */
+  .seg {
+    background: linear-gradient(160deg, var(--seg-from) 0%, var(--seg-to) 100%);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 0;
+    box-shadow: 0 4px 12px -6px rgba(244,63,134,.7);
+  }
+  .seg-start { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+  .seg-end   { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+  .seg-solo  { border-radius: 999px; }
+  /* 进行中的经期末端：加一层柔光呼吸 */
+  .seg-ongoing::after {
+    content: ''; position: absolute; inset: -2px; border-radius: inherit;
+    box-shadow: 0 0 0 2px rgba(244,63,134,.35);
+    animation: breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%,100% { opacity:.25 } 50% { opacity:.9 } }
+
+  /* 预测窗口：淡底 + 虚线，核心日实心描边 */
+  .pred {
+    background: var(--pred-bg);
+    color: rgb(var(--c-rosette-600));
+    border-top: 1.5px dashed var(--pred-line);
+    border-bottom: 1.5px dashed var(--pred-line);
+    border-radius: 0;
+  }
+  .pred-start { border-left: 1.5px dashed var(--pred-line); border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+  .pred-end   { border-right: 1.5px dashed var(--pred-line); border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+  .pred-core  { font-weight: 700; box-shadow: inset 0 0 0 2px var(--pred-core); border-radius: 999px; }
+
+  /* 预测的经期本身：比预测窗口更实一点，但仍明显弱于已记录的经期。
+     实线细边表示"预计这几天在经期"，虚线上下框表示"可能哪天开始"。 */
+  .pred-bleed {
+    background: color-mix(in srgb, var(--pred-bg) 55%, rgb(var(--c-rosette-200)));
+    border-top-style: solid;
+    border-bottom-style: solid;
+  }
+  .pred-bleed-start { border-left: 1.5px solid var(--pred-line); }
+  .pred-bleed-end   { border-right: 1.5px solid var(--pred-line); }
+
+  /* 排卵期前后：紫色淡底，仅作阶段层次 */
+  .fertile { background: var(--fertile-bg); color: var(--fertile-fg); }
+
+  /* 今天：底部指示条，不和经期色抢 */
+  .is-today::before {
+    content: ''; position: absolute; left: 50%; bottom: .22rem; translate: -50% 0;
+    width: 1.15rem; height: 2.5px; border-radius: 999px; background: currentColor; opacity: .85;
+  }
+  .cell.seg.is-today::before { background: #fff; }
+
+  /* 记录点 */
+  .dots { position: absolute; top: .26rem; right: .3rem; display: flex; gap: 1.5px; }
+  .dot { width: 4px; height: 4px; border-radius: 999px; }
+
+  /* ---------- 其他 ---------- */
+  .fade-in { animation: fade .2s ease-out both; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .sheet-in { animation: sheet .24s cubic-bezier(.32,.72,0,1); }
+  @keyframes sheet { from { transform: translateY(100%); } to { transform: none; } }
+  .ring-track { stroke: var(--ring-track); }
+  .ring-bar { stroke: url(#ringGrad); stroke-linecap: round; transition: stroke-dashoffset .5s cubic-bezier(.4,0,.2,1); }
+  [hidden] { display: none !important; }
+  .chat-bubble { overflow-wrap: anywhere; }
+  input[type=range] { accent-color: rgb(var(--c-rosette-500)); }
+  button:focus-visible, [role="button"]:focus-visible, a:focus-visible,
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid rgb(var(--c-rosette-600)); outline-offset: 2px;
+  }
+  .card { background: var(--card-bg); backdrop-filter: blur(10px); }
+  /* 深色下输入框不能留白底，否则一片刺眼的亮块 */
+  body.dark input, body.dark textarea, body.dark select {
+    background-color: var(--input-bg) !important;
+    color: rgb(var(--c-nebula-900));
+  }
+  body.dark input::placeholder, body.dark textarea::placeholder {
+    color: rgb(var(--c-nebula-600) / .8);
+  }
+  /* 提醒横幅 */
+  .banner-soon  { background: rgb(var(--c-rosette-100) / .9); color: rgb(var(--c-rosette-700)); }
+  .banner-info  { background: rgb(var(--c-petal-100) / .85); color: rgb(var(--c-nebula-800)); }
+  .banner-warn  { background: rgb(var(--c-rosette-200) / .85); color: rgb(var(--c-rosette-700)); }
+  .banner-ongoing { background: linear-gradient(135deg, var(--seg-from), var(--seg-to)); color: #fff; }
+  /* 趋势条 */
+  .bar-track { background: rgb(var(--c-rosette-100) / .7); }
+
+  /* 逐日热力图。用 CSS Grid 而不是 table：列数随窗口不变（固定 17 列），
+     行高要能压到 18px 才能一屏放下经前 7 天 + 经期 10 天而不需要横向滚动。
+     格子底色由 JS 按强度算，这里只管几何和空样本的呈现。 */
+  .hm-grid { display: grid; gap: 2px; align-items: center; }
+  .hm-cell {
+    height: 17px;
+    border-radius: 3px;
+    background: rgb(var(--c-rosette-100) / .45);
+  }
+  /* 没有样本 ≠ 没有症状。斜纹把「这天从来没被记录过」和「记录过但没症状」
+     区分开——两者都是空白格的话，图会撒谎。 */
+  .hm-cell.hm-empty {
+    background: repeating-linear-gradient(
+      45deg,
+      rgb(var(--c-nebula-700) / .07) 0 2px,
+      transparent 2px 4px
+    );
+  }
+  /* 经期开始那一列加左边框，眼睛才能立刻找到原点 */
+  .hm-onset { box-shadow: inset 2px 0 0 rgb(var(--c-rosette-500) / .85); }
+
+  /* 症状选择：未选中是描边，选中是实色。
+     手机上点选比输入快，所以这里刻意做成一屏能看完的 chips 而不是下拉。 */
+  .chip {
+    border: 1px solid rgb(var(--c-rosette-200));
+    color: rgb(var(--c-nebula-700));
+    background: rgb(var(--c-surface) / .6);
+    border-radius: 999px;
+    padding: .3rem .6rem;
+    font-size: 11.5px;
+    line-height: 1.1;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .chip[aria-pressed="true"] {
+    background: rgb(var(--c-rosette-500));
+    border-color: rgb(var(--c-rosette-500));
+    color: #fff;
+  }
+  body.dark .chip[aria-pressed="true"] { color: #2a1626; }
+
+  /* 健康提示：分两级。attention 用粉调（需要跟医生聊聊），
+     info 用紫调（只是说明数据情况），避免所有提示看起来一样严重。 */
+  .insight-attention {
+    background: rgb(var(--c-rosette-100) / .75);
+    border-left: 3px solid rgb(var(--c-rosette-500));
+  }
+  .insight-info {
+    background: rgb(var(--c-petal-100) / .7);
+    border-left: 3px solid rgb(var(--c-petal-300));
+  }
+
+  /* 实心按钮与浮层：这些元素在深浅两套里都需要"深底白字"，
+     而 nebula-800 在深色模式下会翻成亮色，直接用会白字白底。 */
+  .btn-solid { background: var(--solid-bg); color: var(--solid-fg); }
+  .sheet-mask { background: var(--mask-bg); }
+  .sheet-body { background: var(--sheet-bg); }
+  .toast-body { background: var(--toast-bg); color: var(--toast-fg); }
+</style>
+</head>
+<body class="text-nebula-900">
+
+<a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow">跳到主要内容</a>
+
+<header class="sticky top-0 z-20 border-b border-surface/60 bg-surface/65 backdrop-blur-xl">
+  <div class="mx-auto flex h-14 max-w-2xl items-center justify-between px-4">
+    <div class="flex items-center gap-2.5">
+      <span aria-hidden="true" class="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-rosette-300 via-rosette-400 to-petal-400 text-[13px] text-white shadow-glow">✦</span>
+      <div class="leading-none">
+        <div class="text-[15px] font-semibold tracking-tight">月历</div>
+        <div class="mt-0.5 text-[9.5px] tracking-[.18em] text-rosette-400">NEBULA ROSETTE</div>
+      </div>
+    </div>
+    <div id="mode-badge" class="flex items-center gap-1 rounded-full bg-surface/70 px-2.5 py-1 text-[10.5px] text-rosette-500 ring-1 ring-rosette-100">🔒 仅存本机</div>
+  </div>
+</header>
+
+<main id="main" class="safe-bottom mx-auto max-w-2xl px-4 pt-4">
+
+  <!-- ============ 日历页 ============ -->
+  <section id="view-calendar" class="space-y-3.5">
+
+    <!-- 提醒横幅：不做系统推送（iOS 上不可靠），打开就能看到反而更确定 -->
+    <div id="reminder" hidden class="fade-in rounded-2xl px-4 py-3 shadow-card" role="status">
+      <div class="flex items-start gap-2.5">
+        <span id="reminder-icon" aria-hidden="true" class="text-base leading-none">🌙</span>
+        <div class="min-w-0 flex-1">
+          <div id="reminder-title" class="text-[13px] font-semibold">—</div>
+          <div id="reminder-detail" class="mt-0.5 text-[11px] leading-relaxed opacity-85">—</div>
+          <div id="reminder-hint" hidden class="mt-1 rounded-lg bg-white/25 px-2 py-1 text-[10.5px] leading-relaxed opacity-90">—</div>
+        </div>
+        <button id="reminder-close" type="button" aria-label="关闭提醒"
+          class="shrink-0 rounded-lg px-1.5 py-0.5 text-[13px] leading-none opacity-60">×</button>
+      </div>
+    </div>
+
+    <!-- 状态卡：环形进度 + 快速记录 -->
+    <div class="card rounded-3xl p-5 shadow-card ring-1 ring-surface/70">
+      <div class="flex items-center gap-5">
+        <div class="relative shrink-0">
+          <svg width="104" height="104" viewBox="0 0 104 104" aria-hidden="true">
+            <defs>
+              <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#fda4c4"/>
+                <stop offset="55%" stop-color="#f43f86"/>
+                <stop offset="100%" stop-color="#c084fc"/>
+              </linearGradient>
+            </defs>
+            <circle class="ring-track" cx="52" cy="52" r="44" fill="none" stroke-width="9"/>
+            <circle id="ring-bar" class="ring-bar" cx="52" cy="52" r="44" fill="none" stroke-width="9"
+                    stroke-dasharray="276.5" stroke-dashoffset="276.5"
+                    transform="rotate(-90 52 52)"/>
+          </svg>
+          <div class="absolute inset-0 grid place-items-center text-center">
+            <div>
+              <div id="ring-day" class="text-[26px] font-semibold leading-none tracking-tight">–</div>
+              <div id="ring-unit" class="mt-1 text-[10px] text-nebula-600">待记录</div>
+            </div>
+          </div>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="status-phase" class="text-[11px] font-medium tracking-wide text-rosette-500">载入中…</p>
+          <p id="status-headline" class="mt-1 text-[21px] font-semibold leading-tight">—</p>
+          <p id="status-sub" class="mt-1 text-xs leading-relaxed text-nebula-700/75">—</p>
+        </div>
+      </div>
+
+      <button id="btn-quick" type="button"
+        class="mt-4 w-full rounded-2xl bg-gradient-to-r from-rosette-400 via-rosette-500 to-rosette-500 px-4 py-3.5 text-[15px] font-semibold text-white shadow-glow transition active:scale-[.98]">
+        今天来了
+      </button>
+      <button id="btn-undo" type="button" hidden
+        class="mt-2 w-full rounded-xl border border-rosette-200 bg-surface/60 px-4 py-2 text-xs text-rosette-600">
+        撤销刚才的记录
+      </button>
+    </div>
+
+    <!-- 日历 -->
+    <div class="card cal-card rounded-3xl p-3.5 shadow-card ring-1 ring-surface/70"
+         style="--cal-bg: url('assets/backdrop.svg')">
+      <div class="mb-2.5 flex items-center justify-between px-0.5">
+        <button id="btn-prev-month" type="button" aria-label="上一月"
+          class="grid h-9 w-9 place-items-center rounded-xl text-nebula-700 transition hover:bg-rosette-50 active:scale-90">‹</button>
+        <div class="flex items-center gap-2">
+          <h2 id="cal-title" class="text-[15px] font-semibold tracking-tight" aria-live="polite">—</h2>
+          <button id="btn-today" type="button"
+            class="rounded-full bg-rosette-50 px-2.5 py-1 text-[10.5px] font-medium text-rosette-600 ring-1 ring-rosette-100">今天</button>
+        </div>
+        <button id="btn-next-month" type="button" aria-label="下一月"
+          class="grid h-9 w-9 place-items-center rounded-xl text-nebula-700 transition hover:bg-rosette-50 active:scale-90">›</button>
+      </div>
+      <div class="grid grid-cols-7 px-0.5 pb-1.5 text-center text-[10.5px] font-medium tracking-wide text-nebula-600/60" aria-hidden="true">
+        <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
+      </div>
+      <div id="cal-grid" class="grid grid-cols-7 gap-y-1" role="grid" aria-label="生理期日历"></div>
+
+      <div class="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-rosette-100/70 px-0.5 pt-3 text-[10.5px] text-nebula-700/65">
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="h-3.5 w-5 rounded-full bg-gradient-to-r from-rosette-400 to-rosette-500"></span>经期</span>
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="h-3.5 w-5 rounded-full border border-dashed border-rosette-300 bg-rosette-50"></span>预测</span>
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="h-3.5 w-5 rounded-full bg-petal-100"></span>排卵期前后</span>
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="h-1.5 w-1.5 rounded-full bg-petal-400"></span>有记录</span>
+      </div>
+    </div>
+
+    <!-- 预测 + 稳定性 并排 -->
+    <div class="grid gap-3.5 sm:grid-cols-2">
+      <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+        <h2 class="flex items-center gap-1.5 text-[13px] font-semibold text-nebula-800">
+          <span aria-hidden="true" class="text-rosette-400">◔</span>下次预测
+        </h2>
+        <div id="predict-body" class="mt-2 text-sm text-nebula-700/80">—</div>
+      </div>
+      <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+        <h2 class="flex items-center gap-1.5 text-[13px] font-semibold text-nebula-800">
+          <span aria-hidden="true" class="text-petal-400">〰</span>周期稳定性
+        </h2>
+        <div id="stability-body" class="mt-2 text-sm text-nebula-700/80">—</div>
+      </div>
+    </div>
+
+    <div class="rounded-3xl bg-gradient-to-br from-rosette-100/80 via-surface/70 to-petal-100/80 p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="flex items-center gap-1.5 text-[13px] font-semibold text-nebula-800">
+        <span aria-hidden="true">🌱</span>今天的小贴士
+      </h2>
+      <p id="tip-body" class="mt-1.5 text-sm leading-relaxed text-nebula-700/85">—</p>
+    </div>
+  </section>
+
+  <!-- ============ 历史页 ============ -->
+  <section id="view-history" hidden class="space-y-3.5">
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">概览</h2>
+      <dl id="history-summary" class="mt-3 grid grid-cols-3 gap-2 text-center"></dl>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">周期长度</h2>
+      <div id="history-chart" class="mt-3"></div>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="text-[13px] font-semibold text-nebula-800">流量与痛感</h2>
+        <span id="trend-insight" class="text-[10.5px] text-rosette-500"></span>
+      </div>
+      <div id="trend-chart" class="mt-3"></div>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">常见症状</h2>
+      <div id="symptom-chart" class="mt-3"></div>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="text-[13px] font-semibold text-nebula-800">经前到经期的逐日规律</h2>
+        <span id="timeline-note" class="text-[10.5px] text-rosette-500"></span>
+      </div>
+      <div id="timeline-chart" class="mt-3"></div>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="text-[13px] font-semibold text-nebula-800">值得留意</h2>
+        <span id="insight-count" class="text-[10.5px] text-rosette-500"></span>
+      </div>
+      <div id="insight-list" class="mt-3 space-y-2"></div>
+      <p class="mt-2.5 text-[10px] leading-relaxed text-nebula-700/50">
+        这些只是从你自己的记录里读出来的模式，不是诊断。有疑问请咨询医生。
+      </p>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 class="text-[13px] font-semibold text-nebula-800">月度报告</h2>
+        <button id="btn-copy-report" type="button"
+          class="rounded-lg border border-rosette-200 px-2 py-1 text-[10.5px] text-rosette-600">复制</button>
+      </div>
+      <p class="mt-1.5 text-[10.5px] leading-relaxed text-nebula-700/55">
+        一段可以直接发给医生或自己存档的纯文字摘要。不含具体备注内容。
+      </p>
+      <pre id="report-body" class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-rosette-50/70 p-3 text-[11px] leading-relaxed text-nebula-800 ring-1 ring-rosette-100">—</pre>
+    </div>
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">历史记录</h2>
+      <ul id="history-list" class="mt-1 divide-y divide-rosette-100/70 text-sm"></ul>
+    </div>
+  </section>
+
+  <!-- ============ AI 页 ============ -->
+  <section id="view-ai" hidden class="space-y-3">
+    <div id="ai-disabled" class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">AI 助手未开启</h2>
+      <p id="ai-reason" class="mt-1.5 text-xs leading-relaxed text-rosette-600">—</p>
+      <p class="mt-2 text-xs leading-relaxed text-nebula-700/70">
+        开启后，你的提问和一段周期摘要（如"周期第 12 天、中位数 28 天"）会发送给模型服务。
+        具体日期和备注正文不会离开这台设备。不开启则本页完全离线。
+      </p>
+      <button type="button" data-goto="settings"
+        class="mt-3 rounded-xl bg-rosette-500 px-4 py-2 text-sm font-medium text-white shadow-glow">去设置</button>
+    </div>
+
+    <div id="ai-panel" hidden class="space-y-3">
+      <div class="card rounded-3xl p-3 shadow-card ring-1 ring-surface/70">
+        <div id="ai-log" class="max-h-[50vh] space-y-2.5 overflow-y-auto px-1 py-1" role="log" aria-live="polite"></div>
+        <div id="ai-quick" class="mt-2 flex flex-wrap gap-1.5 border-t border-rosette-100/70 pt-2.5"></div>
+        <label class="mt-3 flex items-center gap-2 text-xs text-nebula-700">
+          <input id="ai-share-cycle" type="checkbox">本次提问附带周期统计摘要（可选）
+        </label>
+        <p class="mt-1 text-[11px] text-nebula-700/65">问题会发送给配置的模型服务商；勾选后还会发送周期阶段、周期长度等统计信息，不附带原始日期或日记。请勿在问题中填写姓名等身份信息。每次提问独立，不发送聊天历史。</p>
+        <form id="ai-form" class="mt-2 flex gap-2">
+          <label class="sr-only" for="ai-input">向 AI 助手提问</label>
+          <input id="ai-input" type="text" maxlength="300" autocomplete="off" placeholder="问点什么，比如「痛经怎么缓解」"
+            class="min-w-0 flex-1 rounded-2xl border border-rosette-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-rosette-400">
+          <button type="submit" class="rounded-2xl bg-rosette-500 px-4 py-2.5 text-sm font-medium text-white shadow-glow">发送</button>
+        </form>
+      </div>
+      <p class="px-1 text-[11px] leading-relaxed text-nebula-700/55">
+        AI 内容仅供参考，不能替代医生诊断。不适请及时就医。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 设置页 ============ -->
+  <section id="view-settings" hidden class="space-y-3.5">
+
+    <!-- 账号 -->
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">账号与同步</h2>
+
+      <!-- 未登录 -->
+      <div id="acct-logged-out" class="mt-3 space-y-2.5">
+        <p class="text-[11px] leading-relaxed text-nebula-700/65">
+          不登录也能用，数据存在这台设备。登录后会同步到你自己的服务器（SQLite），
+          换设备能接着用，AI 也会走服务端的 key。
+        </p>
+        <div>
+          <label for="acct-server-url" class="text-xs text-nebula-700/70">服务器地址</label>
+          <div class="mt-1 flex gap-2">
+            <input id="acct-server-url" type="url" inputmode="url" placeholder="http://localhost:8000"
+              class="min-w-0 flex-1 rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            <button id="btn-check-server" type="button"
+              class="shrink-0 rounded-xl border border-rosette-200 bg-surface/60 px-3 py-2 text-xs text-rosette-600">检测</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="acct-username" class="text-xs text-nebula-700/70">用户名</label>
+            <input id="acct-username" type="text" autocomplete="username" placeholder="3~32 位字母数字"
+              class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+          </div>
+          <div>
+            <label for="acct-password" class="text-xs text-nebula-700/70">密码</label>
+            <input id="acct-password" type="password" autocomplete="current-password" placeholder="至少 8 位"
+              class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+          </div>
+        </div>
+        <div>
+          <label for="acct-nickname" class="text-xs text-nebula-700/70">昵称（注册时可选）</label>
+          <input id="acct-nickname" type="text" autocomplete="nickname" placeholder="想怎么称呼你"
+            class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-login" type="button"
+            class="rounded-xl bg-rosette-500 px-4 py-2.5 text-sm font-medium text-white shadow-glow">登录</button>
+          <button id="btn-register" type="button"
+            class="rounded-xl border border-rosette-300 bg-surface/60 px-4 py-2.5 text-sm font-medium text-rosette-600">注册</button>
+        </div>
+        <p id="acct-msg" class="text-[11px] leading-relaxed text-rosette-600"></p>
+
+        <!-- 用恢复码找回 -->
+        <div class="rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <button id="btn-toggle-forgot" type="button" aria-expanded="false"
+            class="flex w-full items-center justify-between gap-2 text-left">
+            <span class="text-[11px] font-medium text-nebula-800">忘记密码？用恢复码重设</span>
+            <span id="forgot-caret" aria-hidden="true" class="text-[11px] text-nebula-700/60">展开</span>
+          </button>
+          <div id="forgot-form" hidden class="mt-2.5 space-y-2">
+            <p class="text-[10.5px] leading-relaxed text-nebula-700/65">
+              需要先填好上面的服务器地址。恢复码是登录后在「账号恢复码」里生成并自己保存的那 12 位串，
+              一个码只能用一次，用掉后剩下的会一起作废、其他设备也会被登出。
+            </p>
+            <div>
+              <label for="rec-username" class="text-[11px] text-nebula-700/70">用户名</label>
+              <input id="rec-username" type="text" autocomplete="username"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <div>
+              <label for="rec-code" class="text-[11px] text-nebula-700/70">恢复码</label>
+              <input id="rec-code" type="text" inputmode="latin" autocomplete="off"
+                spellcheck="false" placeholder="ABCD-EFGH-JKMN"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 font-mono text-sm uppercase tracking-wider outline-none focus:border-rosette-400">
+            </div>
+            <div>
+              <label for="rec-new-pwd" class="text-[11px] text-nebula-700/70">新密码（至少 8 位）</label>
+              <input id="rec-new-pwd" type="password" autocomplete="new-password"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <button id="btn-recover" type="button"
+              class="w-full rounded-xl bg-rosette-500 px-4 py-2 text-sm font-medium text-white shadow-glow">用恢复码重设密码</button>
+            <p id="rec-msg" class="text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 已登录 -->
+      <div id="acct-logged-in" hidden class="mt-3 space-y-2.5">
+        <div class="flex items-center gap-3 rounded-2xl bg-rosette-50 p-3 ring-1 ring-rosette-100">
+          <span aria-hidden="true" class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-rosette-300 to-petal-400 text-sm text-white">✦</span>
+          <div class="min-w-0">
+            <div id="acct-name" class="truncate text-sm font-medium">—</div>
+            <div id="acct-server" class="truncate text-[10.5px] text-nebula-700/60">—</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-sync-now" type="button"
+            class="rounded-xl border border-rosette-300 bg-surface/60 px-4 py-2.5 text-sm text-rosette-600">立即同步</button>
+          <button id="btn-logout" type="button"
+            class="rounded-xl border border-rosette-100 bg-surface/60 px-4 py-2.5 text-sm text-nebula-700/70">登出</button>
+        </div>
+
+        <!-- 改昵称 -->
+        <div class="rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <label for="prof-nickname" class="text-[11px] text-nebula-700/70">昵称</label>
+          <div class="mt-1 flex gap-2">
+            <input id="prof-nickname" type="text" autocomplete="nickname" placeholder="留空则显示用户名"
+              class="min-w-0 flex-1 rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            <button id="btn-save-profile" type="button"
+              class="shrink-0 rounded-xl border border-rosette-300 bg-surface/60 px-3 py-2 text-xs text-rosette-600">保存</button>
+          </div>
+          <p id="prof-msg" class="mt-1 text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+        </div>
+
+        <!-- 已登录设备 -->
+        <div class="rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-medium text-nebula-800">已登录的设备</span>
+            <button id="btn-refresh-sessions" type="button"
+              class="rounded-lg border border-rosette-200 px-2 py-1 text-[10.5px] text-rosette-600">刷新</button>
+          </div>
+          <ul id="session-list" class="mt-2 space-y-1.5 text-[11px]"></ul>
+          <p id="session-msg" class="mt-1 text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+        </div>
+
+        <!-- 改密码 -->
+        <div class="rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <button id="btn-toggle-pwd" type="button" aria-expanded="false"
+            class="flex w-full items-center justify-between gap-2 text-left">
+            <span class="text-[11px] font-medium text-nebula-800">修改密码</span>
+            <span id="pwd-caret" aria-hidden="true" class="text-[11px] text-nebula-700/60">展开</span>
+          </button>
+          <div id="pwd-form" hidden class="mt-2.5 space-y-2">
+            <div>
+              <label for="pwd-old" class="text-[11px] text-nebula-700/70">当前密码</label>
+              <input id="pwd-old" type="password" autocomplete="current-password"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <div>
+              <label for="pwd-new" class="text-[11px] text-nebula-700/70">新密码（至少 8 位）</label>
+              <input id="pwd-new" type="password" autocomplete="new-password"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <div>
+              <label for="pwd-new2" class="text-[11px] text-nebula-700/70">再输一次新密码</label>
+              <input id="pwd-new2" type="password" autocomplete="new-password"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <label class="flex items-center justify-between gap-3">
+              <span class="text-[11px] text-nebula-700/70">同时登出其他设备</span>
+              <input id="pwd-logout-others" type="checkbox" checked
+                class="h-5 w-9 shrink-0 appearance-none rounded-full bg-rosette-100 transition checked:bg-rosette-500">
+            </label>
+            <button id="btn-change-pwd" type="button"
+              class="w-full rounded-xl bg-rosette-500 px-4 py-2 text-sm font-medium text-white shadow-glow">确认修改</button>
+            <p id="pwd-msg" class="text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+          </div>
+        </div>
+
+        <!-- 恢复码 -->
+        <div class="rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-medium text-nebula-800">账号恢复码</span>
+            <span id="rec-status" class="text-[10.5px] text-nebula-700/60">—</span>
+          </div>
+          <p class="mt-1 text-[10.5px] leading-relaxed text-nebula-700/65">
+            服务端只存口令的哈希，忘了密码没有别的办法进来。恢复码是唯一的备用钥匙：
+            生成 10 个，抄在纸上或存进密码管理器，一个只能用一次。
+          </p>
+          <div class="mt-2 space-y-2">
+            <div>
+              <label for="rec-gen-pwd" class="text-[11px] text-nebula-700/70">当前密码（生成时需再验一次）</label>
+              <input id="rec-gen-pwd" type="password" autocomplete="current-password"
+                class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+            </div>
+            <button id="btn-gen-recovery" type="button"
+              class="w-full rounded-xl border border-rosette-300 bg-surface/60 px-4 py-2 text-sm font-medium text-rosette-600">生成恢复码</button>
+            <p id="rec-gen-msg" class="text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+            <div id="rec-codes-box" hidden class="rounded-xl bg-white p-2.5 ring-1 ring-rosette-200">
+              <p class="text-[10.5px] font-medium text-rosette-600">
+                现在就保存好，关掉后再也看不到（服务端只留哈希）。
+              </p>
+              <ul id="rec-codes" class="mt-1.5 grid grid-cols-2 gap-1 font-mono text-[11.5px] tracking-wider text-nebula-800"></ul>
+              <div class="mt-2 grid grid-cols-2 gap-2">
+                <button id="btn-copy-codes" type="button"
+                  class="rounded-lg border border-rosette-200 px-2 py-1.5 text-[10.5px] text-rosette-600">复制全部</button>
+                <button id="btn-download-codes" type="button"
+                  class="rounded-lg border border-rosette-200 px-2 py-1.5 text-[10.5px] text-rosette-600">下载 txt</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 注销账号 -->
+        <div class="rounded-2xl bg-red-50/60 p-3 ring-1 ring-red-200/70">
+          <button id="btn-toggle-delacct" type="button" aria-expanded="false"
+            class="flex w-full items-center justify-between gap-2 text-left">
+            <span class="text-[11px] font-medium text-red-600">注销账号</span>
+            <span id="delacct-caret" aria-hidden="true" class="text-[11px] text-red-500/70">展开</span>
+          </button>
+          <div id="delacct-form" hidden class="mt-2.5 space-y-2">
+            <p class="text-[10.5px] leading-relaxed text-nebula-700/70">
+              把账号本身从服务器删掉：记录、密码、恢复码、登录设备、AI 配置全部清除，
+              用户名重新可被注册。<strong class="font-medium text-red-600">不可恢复</strong>，
+              建议先导出备份。本机记录会保留，之后按「仅本机」继续用。
+            </p>
+            <div>
+              <label for="delacct-pwd" class="text-[11px] text-nebula-700/70">当前密码</label>
+              <input id="delacct-pwd" type="password" autocomplete="current-password"
+                class="mt-1 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400">
+            </div>
+            <div>
+              <label for="delacct-confirm" class="text-[11px] text-nebula-700/70">手打一遍用户名以确认</label>
+              <input id="delacct-confirm" type="text" autocomplete="off" spellcheck="false"
+                class="mt-1 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400">
+            </div>
+            <button id="btn-delete-account" type="button"
+              class="w-full rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white">永久删除我的账号</button>
+            <p id="delacct-msg" class="text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+          </div>
+        </div>
+      </div>
+
+      <p id="sync-status" hidden class="mt-2 text-[11px] leading-relaxed text-nebula-700/65"></p>
+      <button id="btn-read-cloud" type="button" class="mt-2 text-xs text-nebula-700/65">同步冲突？备份本机并读取云端版本</button>
+      <button id="btn-local-records" type="button" class="mt-2 text-xs text-nebula-700/65">查看未登录时的本机记录</button>
+    </div>
+
+    <!-- 外观 -->
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">外观</h2>
+      <div class="mt-3">
+        <span class="text-sm">主题</span>
+        <div id="theme-group" class="mt-1.5 grid grid-cols-3 gap-1.5" role="group" aria-label="主题">
+          <button id="theme-auto" type="button" class="rounded-xl border px-2 py-2 text-xs">跟随系统</button>
+          <button id="theme-light" type="button" class="rounded-xl border px-2 py-2 text-xs">浅色</button>
+          <button id="theme-dark" type="button" class="rounded-xl border px-2 py-2 text-xs">深色</button>
+        </div>
+        <p class="mt-1.5 text-[11px] leading-relaxed text-nebula-700/55">
+          深色模式下粉色做了降饱和处理，晚上看不刺眼。
+        </p>
+      </div>
+      <label class="mt-3.5 flex items-center justify-between gap-3">
+        <span class="text-sm">日历背景图</span>
+        <input id="set-cal-bg" type="checkbox" class="h-5 w-9 shrink-0 appearance-none rounded-full bg-rosette-100 transition checked:bg-rosette-500">
+      </label>
+      <p class="mt-1.5 text-[11px] leading-relaxed text-nebula-700/55">
+        玫瑰星云背景，默认开启。觉得影响读数字就关掉。
+      </p>
+    </div>
+
+    <!-- 数据 -->
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">数据</h2>
+      <p id="storage-info" class="mt-1 text-[11px] text-nebula-700/60">—</p>
+      <div class="mt-3 grid gap-2">
+        <button id="btn-export" type="button" class="rounded-xl border border-rosette-200 bg-surface/60 px-4 py-2.5 text-sm text-rosette-600">导出 JSON 备份</button>
+        <button id="btn-export-csv" type="button" class="rounded-xl border border-rosette-200 bg-surface/60 px-4 py-2.5 text-sm text-rosette-600">导出 CSV（Excel 可开）</button>
+        <p class="text-[10.5px] leading-relaxed text-nebula-700/55">
+          JSON 用于换设备恢复，能完整导回来。CSV 是逐日表格，给医生看或自己在 Excel 里
+          筛选统计用，<strong class="font-medium">不能导入</strong>，且包含备注原文。
+        </p>
+        <label class="cursor-pointer rounded-xl border border-rosette-200 bg-surface/60 px-4 py-2.5 text-center text-sm text-rosette-600">
+          导入 JSON 备份
+          <input id="input-import" type="file" accept="application/json,.json" class="hidden">
+        </label>
+        <button id="btn-clear" type="button" class="rounded-xl border border-red-200 bg-surface/60 px-4 py-2.5 text-sm text-red-500">清空所有数据</button>
+      </div>
+    </div>
+
+    <!-- AI -->
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">AI 助手</h2>
+
+      <label class="mt-3 flex items-center justify-between gap-3">
+        <span class="text-sm">启用 AI 问答</span>
+        <input id="set-ai-enabled" type="checkbox" class="h-5 w-9 shrink-0 appearance-none rounded-full bg-rosette-100 transition checked:bg-rosette-500">
+      </label>
+
+      <div class="mt-3">
+        <span class="text-xs text-nebula-700/70">连接方式</span>
+        <div class="mt-1.5 grid grid-cols-2 gap-2" role="radiogroup" aria-label="AI 连接方式">
+          <button id="mode-server" type="button" data-mode="server"
+            class="rounded-xl border px-3 py-2 text-left text-xs transition">
+            <span class="block font-medium">走服务端</span>
+            <span class="block text-[10px] opacity-70">推荐，key 不进浏览器</span>
+          </button>
+          <button id="mode-direct" type="button" data-mode="direct"
+            class="rounded-xl border px-3 py-2 text-left text-xs transition">
+            <span class="block font-medium">直连</span>
+            <span class="block text-[10px] opacity-70">填自己的 key，仅自用</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 服务端模式 -->
+      <div id="cfg-server" class="mt-3 space-y-2.5">
+        <p id="cfg-server-hint" class="text-[11px] leading-relaxed text-nebula-700/70">—</p>
+
+        <!-- 登录后可把自己的 Key 存到服务端（加密） -->
+        <div id="acct-ai-box" hidden class="space-y-2.5 rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="text-xs font-medium text-nebula-800">这个账号的 API Key</div>
+              <div id="acct-ai-status" class="mt-0.5 text-[10.5px] text-nebula-700/65">—</div>
+            </div>
+            <button id="btn-del-ai-config" type="button" hidden
+              class="shrink-0 rounded-lg border border-rosette-200 bg-surface/70 px-2 py-1 text-[10.5px] text-rosette-600">删除</button>
+          </div>
+          <div>
+            <label for="srv-base-url" class="text-[11px] text-nebula-700/70">Base URL（留空用服务端默认）</label>
+            <input id="srv-base-url" type="url" inputmode="url" placeholder="https://api.deepseek.com/v1"
+              class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+          </div>
+          <div>
+            <label for="srv-model" class="text-[11px] text-nebula-700/70">模型名（大小写敏感）</label>
+            <input id="srv-model" type="text" autocomplete="off" placeholder="deepseek-chat"
+              class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+          </div>
+          <div>
+            <label for="srv-api-key" class="text-[11px] text-nebula-700/70">API Key</label>
+            <input id="srv-api-key" type="password" autocomplete="off" placeholder="留空表示不修改"
+              class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+          </div>
+          <button id="btn-save-ai-config" type="button"
+            class="btn-solid w-full rounded-xl px-4 py-2 text-sm font-medium">保存到服务端</button>
+          <p id="acct-ai-msg" class="text-[10.5px] leading-relaxed text-nebula-700/70"></p>
+          <p class="text-[10.5px] leading-relaxed text-nebula-700/55">
+            Key 会加密后存进 SQLite（<code class="rounded bg-surface/70 px-1">ai_configs</code> 表），
+            密钥在服务端的 <code class="rounded bg-surface/70 px-1">.enc_key</code> 文件里。
+            浏览器只拿得到遮掩形式，页面上永远不出现完整 Key。
+          </p>
+        </div>
+
+        <p class="text-[11px] leading-relaxed text-nebula-700/55">
+          没保存账号 Key 时，会退回服务端环境变量 <code class="rounded bg-rosette-50 px-1">LLM_API_KEY</code>。
+          服务端自带按账号限流与安全过滤。
+        </p>
+      </div>
+
+      <!-- 直连模式 -->
+      <div id="cfg-direct" hidden class="mt-3 space-y-2.5">
+        <div class="rounded-xl bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-800 ring-1 ring-amber-200">
+          直连会把 key 存在这台设备的浏览器里，并从浏览器直接发往模型服务。
+          自己用没问题；<b>不要把配好 key 的页面发给别人</b>，也别部署到公网。
+        </div>
+        <div>
+          <label for="set-base-url" class="text-xs text-nebula-700/70">Base URL（OpenAI 兼容）</label>
+          <input id="set-base-url" type="url" inputmode="url" placeholder="https://api.deepseek.com/v1"
+            class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+        </div>
+        <div>
+          <label for="set-model" class="text-xs text-nebula-700/70">模型名（大小写敏感）</label>
+          <input id="set-model" type="text" autocomplete="off" placeholder="deepseek-chat"
+            class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+        </div>
+        <div>
+          <label for="set-api-key" class="text-xs text-nebula-700/70">API Key</label>
+          <input id="set-api-key" type="password" autocomplete="off" placeholder="sk-…"
+            class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+        </div>
+        <button id="btn-test-ai" type="button"
+          class="w-full rounded-xl border border-rosette-300 bg-surface/60 px-4 py-2 text-sm text-rosette-600">测试连接</button>
+        <p id="test-result" class="text-[11px] leading-relaxed text-nebula-700/70"></p>
+      </div>
+    </div>
+
+    <div class="card rounded-3xl p-4 shadow-card ring-1 ring-surface/70">
+      <h2 class="text-[13px] font-semibold text-nebula-800">关于</h2>
+      <p class="mt-1.5 text-xs leading-relaxed text-nebula-700/70">
+        Nebula Rosette（月历）· 内部使用版本。未登录时记录只在浏览器 IndexedDB 里，
+        清除浏览器数据会一并删除；登录后会同步到服务端 SQLite。重要数据建议定期导出备份。
+      </p>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar fixed bottom-0 left-0 right-0 z-20 border-t border-surface/70 bg-surface/80 backdrop-blur-xl" aria-label="主导航">
+  <div class="mx-auto grid max-w-2xl grid-cols-4">
+    <button type="button" data-goto="calendar" class="tab flex flex-col items-center gap-1 py-2.5 text-[10px] transition" aria-current="page">
+      <span aria-hidden="true" class="text-[17px] leading-none">🌸</span><span>日历</span>
+    </button>
+    <button type="button" data-goto="history" class="tab flex flex-col items-center gap-1 py-2.5 text-[10px] transition">
+      <span aria-hidden="true" class="text-[17px] leading-none">📈</span><span>历史</span>
+    </button>
+    <button type="button" data-goto="ai" class="tab flex flex-col items-center gap-1 py-2.5 text-[10px] transition">
+      <span aria-hidden="true" class="text-[17px] leading-none">✨</span><span>助手</span>
+    </button>
+    <button type="button" data-goto="settings" class="tab flex flex-col items-center gap-1 py-2.5 text-[10px] transition">
+      <span aria-hidden="true" class="text-[17px] leading-none">⚙️</span><span>设置</span>
+    </button>
+  </div>
+</nav>
+
+<!-- 日期详情弹层 -->
+<div id="sheet" hidden class="fixed inset-0 z-30">
+  <div id="sheet-mask" class="sheet-mask absolute inset-0 backdrop-blur-sm"></div>
+  <div class="sheet-in absolute bottom-0 left-0 right-0 mx-auto max-w-2xl rounded-t-[1.75rem] sheet-body p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-lift"
+       role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-rosette-200" aria-hidden="true"></div>
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 id="sheet-title" class="text-base font-semibold">—</h2>
+        <p id="sheet-sub" class="mt-0.5 text-xs text-nebula-700/60">—</p>
+      </div>
+      <button id="sheet-close" type="button" aria-label="关闭"
+        class="grid h-8 w-8 place-items-center rounded-full bg-rosette-50 text-nebula-700">✕</button>
+    </div>
+
+    <div class="mt-4 grid gap-2">
+      <button id="sheet-mark-start" type="button" class="rounded-xl bg-rosette-500 px-4 py-2.5 text-sm font-medium text-white shadow-glow">标记为经期开始</button>
+      <button id="sheet-mark-end" type="button" class="rounded-xl border border-rosette-300 px-4 py-2.5 text-sm font-medium text-rosette-600">标记为经期结束</button>
+      <button id="sheet-edit" type="button" class="rounded-xl border border-rosette-200 px-4 py-2.5 text-sm text-rosette-600">改这次的起止日</button>
+      <button id="sheet-remove" type="button" class="rounded-xl border border-rosette-100 px-4 py-2.5 text-sm text-nebula-700/70">删除这次记录</button>
+    </div>
+
+    <!-- 改起止日。放在弹层里而不是单开一页：用户是点着某一天发现标错的，
+         上下文就在这里，跳走再回来会丢失「我在看哪个月」。 -->
+    <div id="sheet-edit-form" hidden class="mt-3 space-y-2 rounded-2xl bg-rosette-50/70 p-3 ring-1 ring-rosette-100">
+      <p class="text-[10.5px] leading-relaxed text-nebula-700/70">
+        改日期不会丢掉这段时间已记的流量、痛感和症状——它们按日期存，跟经期段是分开的。
+      </p>
+      <div>
+        <label for="sheet-edit-start" class="text-[11px] text-nebula-700/70">开始日</label>
+        <input id="sheet-edit-start" type="date"
+          class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+      </div>
+      <div>
+        <label for="sheet-edit-end" class="text-[11px] text-nebula-700/70">结束日（留空表示还没结束）</label>
+        <input id="sheet-edit-end" type="date"
+          class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm outline-none focus:border-rosette-400">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="sheet-edit-save" type="button"
+          class="rounded-xl bg-rosette-500 px-4 py-2 text-sm font-medium text-white shadow-glow">保存日期</button>
+        <button id="sheet-edit-cancel" type="button"
+          class="rounded-xl border border-rosette-200 px-4 py-2 text-sm text-nebula-700/70">取消</button>
+      </div>
+      <p id="sheet-edit-msg" class="text-[10.5px] leading-relaxed text-rosette-600"></p>
+    </div>
+
+    <div class="mt-4 space-y-3 border-t border-rosette-100/70 pt-4">
+      <div>
+        <label for="sheet-flow" class="text-xs text-nebula-700/70">流量</label>
+        <select id="sheet-flow" class="mt-1 w-full rounded-xl border border-rosette-200 bg-white px-3 py-2 text-sm">
+          <option value="">未记录</option>
+          <option value="light">少</option>
+          <option value="medium">中</option>
+          <option value="heavy">多</option>
+        </select>
+      </div>
+      <div>
+        <label for="sheet-pain" class="text-xs text-nebula-700/70">痛感 <span id="sheet-pain-val" class="text-rosette-500">未记录</span></label>
+        <input id="sheet-pain" type="range" min="0" max="5" step="1" value="0" class="mt-1 w-full">
+      </div>
+      <div>
+        <span class="text-xs text-nebula-700/70">症状（可多选）</span>
+        <div id="sheet-symptoms" class="mt-1.5 flex flex-wrap gap-1.5" role="group" aria-label="症状"></div>
+      </div>
+      <div>
+        <label for="sheet-note" class="text-xs text-nebula-700/70">备注</label>
+        <textarea id="sheet-note" rows="2" placeholder="情绪、睡眠、其他症状…"
+          class="mt-1 w-full resize-none rounded-xl border border-rosette-200 px-3 py-2 text-sm outline-none focus:border-rosette-400"></textarea>
+      </div>
+      <button id="sheet-save" type="button" class="btn-solid w-full rounded-xl px-4 py-2.5 text-sm font-medium">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden class="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 toast-body rounded-full px-4 py-2 text-xs shadow-lift" role="status" aria-live="polite"></div>
+
+<script src="js/period.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+# Nebula Rosette —— nginx 反代示例。
+#
+# 用法：拷到 /etc/nginx/sites-available/ 改掉域名，然后
+#   sudo certbot --nginx -d rosette.example.com
+# certbot 会自动补齐证书路径和 80→443 跳转。
+#
+# 这一层存在的唯一理由是 TLS。没有它，登录密码和会话 token 明文过网络。
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name rosette.example.com;
+
+    # certbot 会自己加跳转；手动配的话保留这一行
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name rosette.example.com;
+
+    # certbot 会改写这两行
+    ssl_certificate     /etc/letsencrypt/live/rosette.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/rosette.example.com/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # HSTS。上线前先确认证书没问题——一旦发出去，浏览器在 max-age 内
+    # 会拒绝用 http 访问这个域名，配错了就只能等过期。
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # 备份 JSON 和 CSV 导出可能不小，但请求体上限还是要有
+    client_max_body_size 8m;
+
+    # 应用自己会发 CSP / X-Frame-Options / Referrer-Policy 等头（见
+    # server/main.py 的 security_headers 中间件），这里不要重复加：
+    # nginx 的 add_header 和上游的同名头会同时出现，浏览器行为反而不确定。
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        # 后端按 IP 限流，靠的就是这个头。少了它所有人共用一个限流桶，
+        # 一个人触发限流会把其他人一起挡住。
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # AI 问答要等上游模型，后端自己的超时是 25 秒，这里留一点余量
+        proxy_connect_timeout 10s;
+        proxy_read_timeout    40s;
+        proxy_send_timeout    40s;
+    }
+
+    # Service Worker 必须能拿到 no-cache 和 Service-Worker-Allowed，
+    # 后端已经带了；这里只要别把它缓存住即可。
+    location = /sw.js {
+        proxy_pass http://127.0.0.1:8000/sw.js;
+        proxy_set_header Host $host;
+        add_header Cache-Control "no-cache" always;
+    }
+}

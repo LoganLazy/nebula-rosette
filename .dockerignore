@@ -1,0 +1,42 @@
+# Docker 构建上下文里不需要的东西。
+# 更要紧的是：绝不能把密钥和用户数据打进镜像层——
+# 镜像层是可以被任何拿到镜像的人翻出来的，删了也还在历史层里。
+
+# 密钥与配置
+.env
+.env.*
+*.enc_key
+.enc_key
+server/.enc_key
+
+# 用户数据
+*.db
+*.db-wal
+*.db-shm
+server/nebula.db*
+backups/
+
+# 测试与开发产物（镜像里不跑测试）
+test/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+.local-run/
+venv/
+
+# 前端打包产物：dist 是给「双击打开」用的单文件，
+# 服务端模式走 index.html + js/，不需要它
+dist/
+build/
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# 文档
+README.md
+deploy/
