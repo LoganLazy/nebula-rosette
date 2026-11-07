@@ -44,8 +44,14 @@ RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "10"))
 RATE_LIMIT_PER_DAY = int(os.getenv("RATE_LIMIT_PER_DAY", "200"))
 LOGIN_ATTEMPTS_PER_MIN = int(os.getenv("LOGIN_ATTEMPTS_PER_MIN", "5"))
 ALLOW_REGISTRATION = os.getenv("ALLOW_REGISTRATION", "1") not in ("0", "false", "False")
-# 只有确认前面挂了反代时才开。开了之后 X-Forwarded-For 会被采信，
+# 只有确认前面挂了反代时才开。开了之后应用自己解析 X-Forwarded-For，
 # 而那个头客户端能随便填——直连暴露在公网时开启等于关掉了 IP 限流。
+# 注意这一层不是唯一的防线：uvicorn 默认开了 proxy_headers，
+# 会在应用看到请求之前就按 X-Forwarded-For 改写 request.client.host，
+# 它信不信任这个头由 uvicorn 的 forwarded_allow_ips 决定（默认只信
+# 127.0.0.1），和这里的 TRUST_PROXY 无关。所以"TRUST_PROXY=0 就等于
+# 不信 X-Forwarded-For"是不准确的——真正起作用的是"只有回环地址能连
+# 到后端 + 反代在最后追加真实 IP"这两点，部署时别把端口公开映射出去。
 TRUST_PROXY = os.getenv("TRUST_PROXY", "0") not in ("0", "false", "False", "")
 
 MAX_QUESTION_CHARS = 300
@@ -135,10 +141,19 @@ def _client_ip(request: Request) -> str:
     所以反代场景要读 ``X-Forwarded-For``。
 
     这个头是客户端可以伪造的，任何人都能填一个假 IP 来绕过限流，
-    所以**默认不信**，必须显式设 ``TRUST_PROXY=1`` 才启用——
+    所以应用层**默认不信**，必须显式设 ``TRUST_PROXY=1`` 才由这里解析——
     也就是「你确认自己前面真的有一层会重写这个头的反代」。
     取最后一个而不是第一个：链条形如 ``伪造的, 伪造的, 真实客户端``，
     只有最右边那个是紧邻的反代亲手写上去的。
+
+    但这只是第二层：uvicorn 默认开启 proxy_headers，会在请求到达这里
+    之前就按 ``X-Forwarded-For`` 改写 ``request.client.host``，它信任
+    的来源由 uvicorn 的 ``forwarded_allow_ips`` 决定（默认只信回环地址）。
+    所以 ``TRUST_PROXY=0`` 并不等于「这个头完全不被采信」——如果后端被
+    公开暴露、且 uvicorn 被配成信任任意来源（例如 Dockerfile 里写了
+    ``--forwarded-allow-ips "*"``），伪造的头一样能绕过限流。
+    安全真正依赖的是：后端只监听回环地址、只信回环来源的代理头、
+    反代在链条最后追加真实 IP。
     """
     direct = request.client.host if request.client else "unknown"
     if not TRUST_PROXY:
@@ -833,11 +848,22 @@ BANNED_HINTS = [
 DISCLAIMER = "仅供参考，不能替代医生诊断。"
 
 
+def _normalize_for_match(text: str) -> str:
+    """
+    匹配前归一化：去掉空白和标点、统一大小写。模型输出里的「布 洛 芬」、
+    「布洛芬。」「安 全 期」就不应再绕过关键词过滤。
+    这只是尽力而为的辅助防护，不是医学审核系统：拼音、同音字、拆字
+    之类的变形仍然拦不住，真正的约束在 SYSTEM_PROMPT 里。
+    """
+    return "".join(ch for ch in text.casefold() if ch.isalnum())
+
+
 def safety_filter(text: str) -> str:
     text = (text or "").strip()
     if not text:
         return "这个问题我暂时没法回答，建议咨询医生。" + DISCLAIMER
-    if any(w in text for w in BANNED_HINTS):
+    if any(w in _normalize_for_match(text) for w in
+           (_normalize_for_match(h) for h in BANNED_HINTS)):
         return ("这个问题涉及用药或生育判断，我不方便给具体建议，"
                 "请咨询医生或药师后再决定。" + DISCLAIMER)
     if DISCLAIMER[:6] not in text:
@@ -890,7 +916,13 @@ async def chat(req: ChatRequest, request: Request,
     }
 
     try:
-        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:
+        # trust_env=False：不读环境里的代理变量。环境里一旦有 httpx 解析
+        # 不了的代理配置（例如 NO_PROXY 里带 [::1] 这种括号 IPv6），
+        # AsyncClient 构造时就会直接抛 InvalidURL，而它既不是 HTTPError
+        # 也不是 ValueError，不接住就会变成裸 500。服务端的上游调用不该
+        # 被部署环境的代理变量左右。
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT,
+                                     trust_env=False) as client:
             resp = await client.post(
                 f"{base_url.rstrip('/')}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -898,7 +930,9 @@ async def chat(req: ChatRequest, request: Request,
             )
     except httpx.TimeoutException:
         raise HTTPException(504, "模型响应超时，稍后再试。")
-    except httpx.HTTPError:
+    except (httpx.HTTPError, httpx.InvalidURL):
+        # InvalidURL 也不属于 HTTPError（它的父类就是 Exception），
+        # 构造时或用户填错 Base URL 时都会从这里走，一律按"连不上模型服务"处理。
         raise HTTPException(502, "无法连接模型服务。")
 
     if resp.status_code != 200:
@@ -970,14 +1004,13 @@ def delete_ai_config(user_id: int = Depends(current_user_id)) -> AiConfigOut:
 
 @app.get("/api/health")
 def health() -> dict:
-    with db.get_db() as conn:
-        users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+    # 不返回注册用户数：它对健康检查没用，只是白白泄露信息。
+    # Dockerfile 的 HEALTHCHECK 只看 200 和 ok，前端检测页也不再显示账号数。
     return {
         "ok": True,
         "model": LLM_MODEL,
         "ai_configured": bool(LLM_API_KEY),
         "registration_open": ALLOW_REGISTRATION,
-        "users": users,
     }
 
 

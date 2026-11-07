@@ -833,7 +833,7 @@ function cellOf(html, dayKey) {
       }
       if (/\/api\/health$/.test(url)) {
         return { ok: true, model: 'qwen-turbo', ai_configured: true,
-          registration_open: true, users: 1 };
+          registration_open: true };
       }
       if (/\/api\/ai-config$/.test(url)) {
         if (method === 'PUT') {
@@ -903,12 +903,14 @@ function cellOf(html, dayKey) {
     assert.strictEqual(envA._fetchCalls.length, 0);
   });
 
-  await test('检测服务器会报告 AI 是否已配置', async function () {
+  await test('检测服务器会报告 AI 是否已配置，但不显示账号数', async function () {
     elA('btn-check-server').dispatch('click');
     await flush();
     assert.strictEqual(envA._fetchCalls[0].url, SERVER + '/api/health');
     assert.ok(elA('acct-msg').textContent.indexOf('AI 已配置') > -1,
       '实际: ' + elA('acct-msg').textContent);
+    assert.ok(elA('acct-msg').textContent.indexOf('已有') === -1,
+      '健康检查不应再泄露注册账号数，实际: ' + elA('acct-msg').textContent);
   });
 
   await test('注册会 POST 到 /api/auth/register 并带昵称', async function () {
@@ -2018,7 +2020,7 @@ function cellOf(html, dayKey) {
       '实际 ' + JSON.stringify(last.deletedNotes));
   });
 
-  await test('改备注会带上本地时间戳，服务端才能判新旧', async function () {
+  await test('改备注会带上 UTC 时间戳，服务端才能判新旧', async function () {
     var e = buildEnv({
       periods: [{ start: '2026-03-01', end: '2026-03-05' }],
       settings: { serverUrl: SERVER, token: 'tok-ts', username: 'alice' }
@@ -2037,6 +2039,28 @@ function cellOf(html, dayKey) {
     var last = JSON.parse(puts[puts.length - 1].body);
     assert.ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(last.noteTimes['2026-03-03'] || ''),
       '缺少或格式不对: ' + last.noteTimes['2026-03-03']);
+  });
+
+  await test('备注时间戳是 UTC：同一时刻在哪个时区都一样', function () {
+    // 2026-01-15 08:30 UTC：纽约本地是 03:30，上海本地是 16:30；
+    // stamp 必须始终是 08:30，否则两台分处东西半球的设备比较先后会反。
+    // 回归：旧实现用本地时间，东八区 20:00 的修改会"赢过"西五区 08:00
+    // 的修改，尽管后者实际晚了 1 小时。
+    var e = buildEnv({}, serverResponder(), { systemDark: false });
+    var d = new Date(Date.UTC(2026, 0, 15, 8, 30, 0));
+    var prevTZ = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      assert.strictEqual(e.Storage.stamp(d), '2026-01-15 08:30:00');
+    } finally {
+      if (prevTZ === undefined) delete process.env.TZ; else process.env.TZ = prevTZ;
+    }
+    process.env.TZ = 'Asia/Shanghai';
+    try {
+      assert.strictEqual(e.Storage.stamp(d), '2026-01-15 08:30:00');
+    } finally {
+      if (prevTZ === undefined) delete process.env.TZ; else process.env.TZ = prevTZ;
+    }
   });
 
   await test('清空数据走整表替换，否则合并模式下服务端删不掉', async function () {

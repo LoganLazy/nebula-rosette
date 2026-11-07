@@ -1620,7 +1620,6 @@
       var bits = ['服务器可用'];
       bits.push(h.ai_configured ? 'AI 已配置' : 'AI 未配置（服务端缺 LLM_API_KEY）');
       if (!h.registration_open) bits.push('注册已关闭');
-      bits.push('已有 ' + h.users + ' 个账号');
       out.textContent = bits.join(' · ');
     }).catch(function (err) {
       out.textContent = '连不上：' + (err.message || '未知错误');

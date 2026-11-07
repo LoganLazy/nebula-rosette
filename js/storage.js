@@ -163,11 +163,22 @@
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
-  /** 与服务端 updated_at 同格式的本地时间戳 "YYYY-MM-DD HH:MM:SS" */
+  /**
+   * 与服务端 updated_at 同格式的 UTC 时间戳 "YYYY-MM-DD HH:MM:SS"。
+   *
+   * 必须用 UTC 而不是本地时间：服务端按字符串比较判新旧，多设备分处不同
+   * 时区时，本地时间字符串的先后不等于真实修改的先后——东八区本地 20:00
+   * 的修改会"赢过"西五区本地 08:00 的修改，尽管后者实际晚了 1 小时。
+   * 格式保持不变，所以和服务端 datetime('now')（UTC）以及已存的值仍可
+   * 直接按字符串比较。已知局限：升级前已存的本地时间戳无法追溯换算，
+   * 仍按旧规则比较，时区偏东的设备在升级后数小时内个别备注可能仍按旧
+   * 时间戳判旧；该路径只影响不带 syncBase 的旧版同步，新版三路合并
+   * 不依赖时间戳。
+   */
   function stamp(d) {
     d = d || new Date();
-    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
-      pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) + ' ' +
+      pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()) + ':' + pad2(d.getUTCSeconds());
   }
 
   function getMeta() {

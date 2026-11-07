@@ -49,4 +49,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # 单 worker：SQLite 在多进程写入下会撞锁，而这个应用的写入量
 # （一个人一天记几条）离需要多 worker 差着好几个数量级。
 # 真要横向扩容，先把存储换成 Postgres，而不是加 worker。
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
+#
+# 代理头只信回环地址：uvicorn 默认 forwarded_allow_ips 就是 127.0.0.1，
+# 宿主机上的 nginx 从回环连进来，正好覆盖文档里的两种部署。
+# 千万别加 --forwarded-allow-ips "*"——那会让任意来源的
+# X-Forwarded-For 都被采信，一旦有人把容器端口公开映射出去，
+# 任何人伪造这个头就能绕过登录限流（main.py 的 TRUST_PROXY 拦不住，
+# 因为 uvicorn 在应用看到请求之前就已经按这个头改写了 client.host）。
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--proxy-headers"]
