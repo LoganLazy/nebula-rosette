@@ -31,6 +31,10 @@ import crypto
 import db
 import main as srv
 
+# fresh() 会把 httpx.AsyncClient 换成替身，这里先留一份真的，
+# 否则测试里再想用回真客户端时拿到的还是替身。
+_REAL_ASYNC_CLIENT = httpx.AsyncClient
+
 passed = 0
 failed = 0
 
@@ -522,6 +526,23 @@ def _():
     assert c.get("/api/data", headers=hdr(token)).json()["notes"]["2026-08-01"]["text"] == "服务端的"
 
 
+@test("跨时区：UTC 时间戳比较，真实更晚的修改获胜")
+def _():
+    # 回归：旧版前端发本地时间戳时，UTC+8 设备本地 20:00（UTC 12:00）的修改
+    # 会"赢过" UTC-5 设备本地 08:00（UTC 13:00）的修改，尽管后者实际晚 1 小时。
+    # 前端现已发 UTC 时间戳，同一时刻的两地时间戳可直接按字符串比较。
+    c = fresh()
+    token = signup(c, "merge-tz")
+    c.put("/api/data", json={
+        "periods": [], "notes": {"2026-08-01": {"text": "东八区先改的"}},
+        "noteTimes": {"2026-08-01": "2026-11-07 12:00:00"}}, headers=hdr(token))
+    r = c.put("/api/data", json={
+        "periods": [], "notes": {"2026-08-01": {"text": "西五区后改的"}},
+        "noteTimes": {"2026-08-01": "2026-11-07 13:00:00"}}, headers=hdr(token))
+    assert r.json()["merged"]["notesUpdated"] == 1, r.json()
+    assert c.get("/api/data", headers=hdr(token)).json()["notes"]["2026-08-01"]["text"] == "西五区后改的"
+
+
 @test("没带时间戳时保守处理：只补缺的，不覆盖已有的")
 def _():
     c = fresh()
@@ -885,6 +906,29 @@ def _():
     assert "多囊" not in r.json()["answer"]
 
 
+@test("关键词加空格或标点也拦得住（归一化后匹配）")
+def _():
+    c = fresh(FakeResponse(payload={"choices": [{"message": {"content": "可以吃布 洛 芬缓解。"}}]}))
+    token = signup(c, "ivan")
+    r = c.post("/api/chat", json={"question": "痛经吃什么", "cycle": BASE_CYCLE},
+               headers=hdr(token))
+    assert "布 洛 芬" not in r.json()["answer"]
+    assert "不方便给具体建议" in r.json()["answer"]
+
+
+@test("safety_filter：空格/标点变形被拦截，正常回答只补免责声明")
+def _():
+    assert "不方便给具体建议" in srv.safety_filter("建议服用布洛芬。")
+    assert "不方便给具体建议" in srv.safety_filter("试试布 洛 芬吧")
+    assert "不方便给具体建议" in srv.safety_filter("安 全 期 是哪几天？")
+    assert "不方便给具体建议" in srv.safety_filter("芬必得、也可以")
+    ok = srv.safety_filter("多喝热水，注意保暖。")
+    assert "多喝热水" in ok
+    assert "不方便给具体建议" not in ok
+    assert ok.endswith(srv.DISCLAIMER)
+    assert "暂时没法回答" in srv.safety_filter("   ")
+
+
 @test("上游返回空内容时明确报告失败")
 def _():
     c = fresh(FakeResponse(payload={"choices": [{"message": {"content": ""}}]}))
@@ -944,6 +988,58 @@ def _():
                   headers=hdr(token)).status_code == 502
 
 
+@test("构造 httpx 客户端抛 InvalidURL 时返回 502 而不是裸 500")
+def _():
+    # 回归：InvalidURL 既不是 HTTPError 也不是 ValueError，旧代码接不住，
+    # 环境里有 httpx 解析不了的代理配置（例如 NO_PROXY 含 [::1]）时
+    # AsyncClient 构造直接抛错，整个 /api/chat 变成 500。
+    class RaisingClient:
+        def __init__(self, *a, **k):
+            raise httpx.InvalidURL("Invalid port: ':1]'")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    c = fresh()
+    token = signup(c, "nancy")
+    orig = srv.httpx.AsyncClient
+    srv.httpx.AsyncClient = RaisingClient
+    try:
+        r = c.post("/api/chat", json={"question": "hi", "cycle": BASE_CYCLE},
+                   headers=hdr(token))
+    finally:
+        srv.httpx.AsyncClient = orig
+    assert r.status_code == 502, r.text
+    assert "无法连接模型服务" in r.text
+
+
+@test("毒化的代理环境变量 + 填错的 Base URL 也只返回 502")
+def _():
+    # 真实 AsyncClient + trust_env=False：构造时不再读环境代理变量，
+    # 填错的 Base URL 在发请求前解析失败，同样走 502，不发真实网络请求。
+    c = fresh()
+    token = signup(c, "oscar")
+    c.put("/api/ai-config", headers=hdr(token), json={
+        "base_url": "https://example.com:bad", "model": "m", "api_key": "sk-x"})
+    orig_client = srv.httpx.AsyncClient
+    orig_no_proxy = os.environ.get("NO_PROXY")
+    srv.httpx.AsyncClient = _REAL_ASYNC_CLIENT
+    os.environ["NO_PROXY"] = "[::1]"
+    try:
+        r = c.post("/api/chat", json={"question": "hi", "cycle": BASE_CYCLE},
+                   headers=hdr(token))
+    finally:
+        srv.httpx.AsyncClient = orig_client
+        if orig_no_proxy is None:
+            os.environ.pop("NO_PROXY", None)
+        else:
+            os.environ["NO_PROXY"] = orig_no_proxy
+    assert r.status_code == 502, r.text
+
+
 @test("上游 401 不泄露原始错误内容")
 def _():
     c = fresh(FakeResponse(status_code=401,
@@ -1001,7 +1097,7 @@ def _():
 print("\n[接口暴露与 CORS]")
 
 
-@test("健康检查可用且不泄露 key")
+@test("健康检查可用且不泄露 key 与用户数")
 def _():
     c = fresh()
     r = c.get("/api/health")
@@ -1009,14 +1105,15 @@ def _():
     body = r.json()
     assert body["ai_configured"] is True
     assert "test-key" not in json.dumps(body)
-    assert body["users"] == 0
+    assert "users" not in body
 
 
-@test("健康检查报告账号数量")
+@test("注册用户后健康检查也不泄露用户数")
 def _():
     c = fresh()
     signup(c, "quinnh")
-    assert c.get("/api/health").json()["users"] == 1
+    signup(c, "quinn2")
+    assert "users" not in c.get("/api/health").json()
 
 
 @test("允许的来源可跨域，未列入白名单的不放行")
@@ -1832,6 +1929,23 @@ def _():
         assert r2.status_code == 429, "改左边就换桶说明取错了位置"
     finally:
         srv.TRUST_PROXY = False
+
+
+print("\n[部署配置]")
+
+
+@test("Dockerfile 不信任任意来源的 X-Forwarded-For")
+def _():
+    # uvicorn 会在应用看到请求之前就按 X-Forwarded-For 改写来源 IP，
+    # 一旦写了 --forwarded-allow-ips "*"，公开映射的端口就等于把登录限流
+    # 交给了请求方自己填的头。默认只信回环地址就覆盖了文档里的部署方式。
+    # 只查 CMD 行：注释里提到这个选项是刻意写明的禁忌，不是真的启用。
+    root = Path(__file__).resolve().parent.parent
+    text = (root / "Dockerfile").read_text(encoding="utf-8")
+    cmd = [ln for ln in text.splitlines() if ln.startswith("CMD")]
+    assert len(cmd) == 1, f"Dockerfile 应恰好有一条 CMD，实际 {len(cmd)} 条"
+    assert "forwarded-allow-ips" not in cmd[0], "CMD 不应信任任意来源的 XFF"
+    assert "--proxy-headers" in cmd[0]
 
 
 print(f"\n{passed} passed, {failed} failed\n")

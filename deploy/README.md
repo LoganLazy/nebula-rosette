@@ -58,6 +58,10 @@ docker compose logs -f           # 看到 Uvicorn running 就好了
 （容器前面必然有一层）；systemd unit 里显式写的是 0，挂了反代要改成 1。
 设错的后果不对称——挂了反代却设 0 只是限流失效，而直接暴露公网却设 1
 等于让任何人伪造 `X-Forwarded-For` 绕过登录限流。
+另外注意：uvicorn 默认也会按这个头改写来源 IP（只信回环地址），所以
+`TRUST_PROXY=0` 不等于这个头完全不被采信——真正的安全边界是后端只监听
+回环地址、反代在最后追加真实 IP。不要把 8000 直接映射到公网，也不要在
+uvicorn 命令里加 `--forwarded-allow-ips "*"`。
 
 备份用 `sh backup.sh`，它两种部署都认（检测不到容器就走裸机分支）。
 挂到 cron 上：

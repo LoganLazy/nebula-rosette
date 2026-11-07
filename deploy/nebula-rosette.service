@@ -50,6 +50,10 @@ EnvironmentFile=-/srv/nebula-rosette/.env
 # 直连时必须是 0。这里显式写出来而不是靠默认值：
 # 挂反代后忘了改成 1 只是限流失效，而暴露在公网却设成 1
 # 等于让任何人伪造 X-Forwarded-For 绕过登录限流。
+# 另外注意：uvicorn 默认也会按这个头改写来源 IP（只信回环地址），
+# 所以 TRUST_PROXY=0 不等于这个头完全不被采信——真正的安全边界是
+# 下面只监听 127.0.0.1 + 反代在最后追加真实 IP，不要改绑 0.0.0.0，
+# 也不要在 uvicorn 命令里加 --forwarded-allow-ips "*"。
 Environment=TRUST_PROXY=0
 # 部署时改成你的真实域名，否则浏览器会拦跨域请求
 Environment=ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
